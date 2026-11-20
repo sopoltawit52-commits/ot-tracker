@@ -505,8 +505,13 @@
 
             <div class="flex flex-wrap gap-2">
               <button id="btnSaveGasUrl" type="button" class="flex-1 py-2.5 px-4 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-xl transition min-h-[44px]">บันทึกและเชื่อมต่อ</button>
+              <button id="btnPushSettings" type="button" class="py-2.5 px-4 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium rounded-xl transition min-h-[44px]">อัปโหลดตั้งค่าขึ้นชีท</button>
               <button id="btnPullFromSheet" type="button" class="py-2.5 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-medium rounded-xl transition min-h-[44px]">ดึงข้อมูลจากชีท</button>
             </div>
+            <button id="btnCopyMobileLink" type="button" class="w-full py-2.5 px-4 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs sm:text-sm font-semibold rounded-xl transition flex items-center justify-center gap-2 min-h-[44px]">
+              <i data-lucide="smartphone" class="w-4 h-4"></i>
+              <span>คัดลอกลิงก์เปิดบนมือถือ (เชื่อมต่ออัตโนมัติ)</span>
+            </button>
 
             <hr class="border-slate-100" />
 
@@ -560,6 +565,7 @@
   <script>
     const GAS_CODE = `// วางโค้ดนี้ใน Google Sheets > Extensions > Apps Script (Code.gs)
 const SHEET_NAME = 'OT_Records';
+const SETTINGS_SHEET = 'App_Settings';
 
 function getOrCreateSheet() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -568,6 +574,17 @@ function getOrCreateSheet() {
     sheet = ss.insertSheet(SHEET_NAME);
     sheet.appendRow(['id', 'date', 'employee', 'start', 'end', 'breakMin', 'hours', 'multiplier', 'hourlyBase', 'pay', 'note', 'createdAt']);
     sheet.getRange(1, 1, 1, 12).setFontWeight('bold').setBackground('#e0e7ff');
+  }
+  return sheet;
+}
+
+function getOrCreateSettingsSheet() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let sheet = ss.getSheetByName(SETTINGS_SHEET);
+  if (!sheet) {
+    sheet = ss.insertSheet(SETTINGS_SHEET);
+    sheet.appendRow(['settings_json', 'updatedAt']);
+    sheet.getRange(1, 1, 1, 2).setFontWeight('bold').setBackground('#e0e7ff');
   }
   return sheet;
 }
@@ -581,7 +598,15 @@ function doGet(e) {
     headers.forEach((h, i) => obj[h] = row[i]);
     return obj;
   });
-  return ContentService.createTextOutput(JSON.stringify({ status: 'ok', records }))
+
+  let settings = null;
+  const sSheet = getOrCreateSettingsSheet();
+  const sVal = sSheet.getRange(2, 1).getValue();
+  if (sVal) {
+    try { settings = JSON.parse(sVal); } catch (err) {}
+  }
+
+  return ContentService.createTextOutput(JSON.stringify({ status: 'ok', records, settings }))
     .setMimeType(ContentService.MimeType.JSON);
 }
 
@@ -590,9 +615,16 @@ function doPost(e) {
   lock.waitLock(10000);
   try {
     const payload = JSON.parse(e.postData.contents);
-    const sheet = getOrCreateSheet();
     const action = payload.action || 'upsert';
 
+    if (action === 'saveSettings') {
+      const sSheet = getOrCreateSettingsSheet();
+      sSheet.getRange(2, 1, 1, 2).setValues([[JSON.stringify(payload.settings || {}), new Date().toISOString()]]);
+      return ContentService.createTextOutput(JSON.stringify({ status: 'settings_saved' }))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+
+    const sheet = getOrCreateSheet();
     if (action === 'delete') {
       const rows = sheet.getDataRange().getValues();
       for (let i = rows.length - 1; i >= 1; i--) {
@@ -885,14 +917,46 @@ function doPost(e) {
       }
     }
 
-    async function pullRecordsFromSheet() {
+    function applySettingsToInputs() {
+      document.getElementById('profileName').value = state.settings.profileName || 'บัญชีส่วนตัว';
+      document.getElementById('defaultStartTime').value = state.settings.defaultStartTime || '17:30';
+      if (!document.getElementById('editRecordId').value) {
+        document.getElementById('otStart').value = state.settings.defaultStartTime || '17:30';
+      }
+      document.getElementById('baseSalary').value = state.settings.baseSalary;
+      document.getElementById('workDays').value = state.settings.workDays;
+      document.getElementById('workHours').value = state.settings.workHours;
+      document.getElementById('allowancePosition').value = state.settings.allowancePosition;
+      document.getElementById('allowanceDiligence').value = state.settings.allowanceDiligence;
+      document.getElementById('allowanceOther').value = state.settings.allowanceOther;
+      document.getElementById('ssoEnabled').checked = Boolean(state.settings.ssoEnabled);
+      document.getElementById('ssoIncludePosition').checked = state.settings.ssoIncludePosition !== false;
+      document.getElementById('ssoMax').value = state.settings.ssoMax;
+      document.getElementById('pvdPercent').value = state.settings.pvdPercent;
+      document.getElementById('otherDeduction').value = state.settings.otherDeduction;
+      document.getElementById('gasUrlInput').value = state.settings.gasUrl || '';
+    }
+
+    async function pushSettingsToSheet(silent = false) {
       const url = (state.settings.gasUrl || '').trim();
       if (!url.startsWith('https://script.google.com/')) {
-        showToast('กรุณากรอก Google Apps Script Web App URL ก่อน', 'warning');
+        if (!silent) showToast('กรุณาเชื่อมต่อ Google Sheets URL ก่อน', 'warning');
+        return false;
+      }
+      const { gasUrl, ...syncableSettings } = state.settings;
+      const ok = await syncRecordToSheet('saveSettings', { settings: syncableSettings });
+      if (ok && !silent) showToast('อัปโหลดค่าตั้งค่าเงินเดือนและรายการหักขึ้นชีทแล้ว', 'success');
+      return ok;
+    }
+
+    async function pullRecordsFromSheet(silent = false) {
+      const url = (state.settings.gasUrl || '').trim();
+      if (!url.startsWith('https://script.google.com/')) {
+        if (!silent) showToast('กรุณากรอก Google Apps Script Web App URL ก่อน', 'warning');
         return;
       }
       try {
-        showToast('กำลังดึงข้อมูลจาก Google Sheets...', 'info');
+        if (!silent) showToast('กำลังดึงข้อมูลจาก Google Sheets...', 'info');
         const res = await fetch(url);
         if (!res.ok) throw new Error('HTTP ' + res.status);
         const data = await res.json();
@@ -906,15 +970,21 @@ function doPost(e) {
             hourlyBase: Number(r.hourlyBase) || 0,
             pay: Number(r.pay) || 0
           }));
+          if (data.settings && typeof data.settings === 'object') {
+            const currentGasUrl = state.settings.gasUrl;
+            state.settings = { ...state.settings, ...data.settings, gasUrl: currentGasUrl };
+            applySettingsToInputs();
+            if (typeof window._refreshCustomLists === 'function') window._refreshCustomLists();
+          }
           state.isDemo = false;
           saveState();
           renderAll();
-          showToast(`ซิงค์สำเร็จ! โหลดข้อมูล ${state.records.length} รายการ`, 'success');
-        } else {
+          if (!silent) showToast(`ซิงค์สำเร็จ! โหลดข้อมูล ${state.records.length} รายการ`, 'success');
+        } else if (!silent) {
           showToast('รูปแบบข้อมูลจากชีทไม่ถูกต้อง', 'error');
         }
       } catch (err) {
-        showToast('ไม่สามารถเชื่อมต่อ Google Sheets ได้ ตรวจสอบการ Deploy (Anyone)', 'error');
+        if (!silent) showToast('ไม่สามารถเชื่อมต่อ Google Sheets ได้ ตรวจสอบการ Deploy (Anyone)', 'error');
       }
     }
 
@@ -1196,22 +1266,19 @@ function doPost(e) {
       document.getElementById('otDate').value = getTodayStr();
       document.getElementById('monthFilter').value = state.selectedMonth;
 
-      // Populate settings inputs
-      document.getElementById('profileName').value = state.settings.profileName || 'บัญชีส่วนตัว';
-      document.getElementById('defaultStartTime').value = state.settings.defaultStartTime || '17:30';
-      document.getElementById('otStart').value = state.settings.defaultStartTime || '17:30';
-      document.getElementById('baseSalary').value = state.settings.baseSalary;
-      document.getElementById('workDays').value = state.settings.workDays;
-      document.getElementById('workHours').value = state.settings.workHours;
-      document.getElementById('allowancePosition').value = state.settings.allowancePosition;
-      document.getElementById('allowanceDiligence').value = state.settings.allowanceDiligence;
-      document.getElementById('allowanceOther').value = state.settings.allowanceOther;
-      document.getElementById('ssoEnabled').checked = Boolean(state.settings.ssoEnabled);
-      document.getElementById('ssoIncludePosition').checked = state.settings.ssoIncludePosition !== false;
-      document.getElementById('ssoMax').value = state.settings.ssoMax;
-      document.getElementById('pvdPercent').value = state.settings.pvdPercent;
-      document.getElementById('otherDeduction').value = state.settings.otherDeduction;
-      document.getElementById('gasUrlInput').value = state.settings.gasUrl || '';
+      try {
+        const params = new URLSearchParams(window.location.search);
+        const apiParam = (params.get('api') || '').trim();
+        if (apiParam.startsWith('https://script.google.com/')) {
+          state.settings.gasUrl = apiParam;
+          saveState();
+          if (window.history && window.history.replaceState) {
+            window.history.replaceState({}, '', window.location.pathname);
+          }
+        }
+      } catch (err) {}
+
+      applySettingsToInputs();
 
       renderAll();
 
@@ -1318,6 +1385,14 @@ function doPost(e) {
         `).join('');
       }
       renderFixedItemsList();
+      window._refreshCustomLists = () => {
+        renderMultiplierOptions();
+        renderDurationPresets();
+        renderFixedItemsList();
+      };
+      if ((state.settings.gasUrl || '').startsWith('https://script.google.com/')) {
+        pullRecordsFromSheet(true);
+      }
 
       document.getElementById('btnAddFixedItem').addEventListener('click', () => {
         const name = document.getElementById('fixedItemName').value.trim();
@@ -1547,7 +1622,31 @@ function doPost(e) {
         updateSyncBadge();
         await pullRecordsFromSheet();
       });
-      document.getElementById('btnPullFromSheet').addEventListener('click', pullRecordsFromSheet);
+      document.getElementById('btnPushSettings').addEventListener('click', () => pushSettingsToSheet(false));
+      document.getElementById('btnPullFromSheet').addEventListener('click', () => pullRecordsFromSheet(false));
+      document.getElementById('btnCopyMobileLink').addEventListener('click', async () => {
+        const url = (state.settings.gasUrl || '').trim();
+        if (!url.startsWith('https://script.google.com/')) {
+          showToast('กรุณาวาง Web App URL และกดบันทึกก่อน', 'warning');
+          return;
+        }
+        const shareUrl = `${window.location.origin}${window.location.pathname}?api=${encodeURIComponent(url)}`;
+        try {
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            await navigator.clipboard.writeText(shareUrl);
+          } else {
+            const ta = document.createElement('textarea');
+            ta.value = shareUrl;
+            document.body.appendChild(ta);
+            ta.select();
+            document.execCommand('copy');
+            ta.remove();
+          }
+          showToast('คัดลอกลิงก์สำหรับเปิดบนมือถือแล้ว', 'success');
+        } catch (err) {
+          showToast('ไม่สามารถคัดลอกอัตโนมัติได้', 'warning');
+        }
+      });
       document.getElementById('btnQuickSync').addEventListener('click', () => {
         if ((state.settings.gasUrl || '').startsWith('https://script.google.com/')) {
           pullRecordsFromSheet();
