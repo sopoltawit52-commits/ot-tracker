@@ -1,0 +1,1145 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ระบบบันทึกเวลาและคำนวณโอที (OT Tracker — GitHub & Google Sheets)</title>
+  <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+Thai:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    body {
+      font-family: 'Inter', 'Noto Sans Thai', -apple-system, BlinkMacSystemFont, sans-serif;
+    }
+    .tab-active {
+      background-color: #4f46e5;
+      color: #ffffff;
+      box-shadow: 0 1px 3px rgba(79, 70, 229, 0.3);
+    }
+    .tab-inactive {
+      color: #475569;
+    }
+    .tab-inactive:hover {
+      background-color: #f1f5f9;
+      color: #0f172a;
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(4px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .animate-fade-in {
+      animation: fadeIn 0.2s ease-out;
+    }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen antialiased">
+
+  <!-- Toast Container -->
+  <div id="toastContainer" class="fixed bottom-4 right-4 z-50 flex flex-col gap-2 max-w-sm"></div>
+
+  <!-- Confirm Modal -->
+  <div id="confirmModal" class="hidden fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl shadow-xl max-w-md w-full p-6 animate-fade-in">
+      <div class="flex items-start gap-3">
+        <div class="w-10 h-10 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center shrink-0">
+          <i data-lucide="alert-triangle" class="w-5 h-5"></i>
+        </div>
+        <div>
+          <h3 id="confirmTitle" class="text-base font-semibold text-slate-900">ยืนยันการดำเนินการ</h3>
+          <p id="confirmMessage" class="text-sm text-slate-600 mt-1">คุณต้องการดำเนินการนี้ใช่หรือไม่?</p>
+        </div>
+      </div>
+      <div class="mt-6 flex justify-end gap-2">
+        <button id="confirmCancelBtn" type="button" class="px-4 py-2 text-sm font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition">ยกเลิก</button>
+        <button id="confirmOkBtn" type="button" class="px-4 py-2 text-sm font-medium text-white bg-rose-600 hover:bg-rose-700 rounded-xl transition">ยืนยัน</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Top Navigation -->
+  <header class="bg-white border-b border-slate-200 sticky top-0 z-30">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-3">
+      <div class="flex items-center gap-3 min-w-0">
+        <div class="w-10 h-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center shrink-0 shadow-sm">
+          <i data-lucide="clock-4" class="w-5 h-5"></i>
+        </div>
+        <div class="min-w-0">
+          <h1 class="text-base sm:text-lg font-bold text-slate-900 truncate">OT Tracker &amp; Calculator</h1>
+          <p class="text-xs text-slate-500 truncate">บันทึกเวลาโอที • Google Sheets DB • GitHub Pages</p>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-2 shrink-0">
+        <span id="syncStatusBadge" class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-amber-50 text-amber-700 border border-amber-200">
+          <span class="w-2 h-2 rounded-full bg-amber-500"></span>
+          <span class="hidden sm:inline">โหมดออฟไลน์ (Local)</span>
+          <span class="sm:hidden">Local</span>
+        </span>
+        <button id="btnQuickSync" type="button" title="ซิงค์ข้อมูลกับ Google Sheets" class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs sm:text-sm font-medium text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-xl transition">
+          <i data-lucide="refresh-cw" class="w-4 h-4"></i>
+          <span class="hidden sm:inline">ซิงค์ชีท</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Content -->
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+
+    <!-- Navigation Tabs -->
+    <div class="flex flex-wrap items-center justify-between gap-3">
+      <nav class="inline-flex p-1 bg-white border border-slate-200 rounded-2xl shadow-xs overflow-x-auto max-w-full" aria-label="Tabs">
+        <button type="button" data-tab="dashboard" class="nav-tab tab-active inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-xl transition whitespace-nowrap">
+          <i data-lucide="layout-dashboard" class="w-4 h-4"></i>
+          <span>บันทึกและคำนวณ OT</span>
+        </button>
+        <button type="button" data-tab="history" class="nav-tab tab-inactive inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-xl transition whitespace-nowrap">
+          <i data-lucide="table-2" class="w-4 h-4"></i>
+          <span>ประวัติทั้งหมด</span>
+          <span id="historyCountBadge" class="px-1.5 py-0.5 text-xs rounded-md bg-slate-200 text-slate-700">0</span>
+        </button>
+        <button type="button" data-tab="setup" class="nav-tab tab-inactive inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-xl transition whitespace-nowrap">
+          <i data-lucide="database" class="w-4 h-4"></i>
+          <span>ตั้งค่า Google Sheets &amp; GitHub</span>
+        </button>
+      </nav>
+
+      <div class="flex items-center gap-2">
+        <label for="monthFilter" class="text-xs font-medium text-slate-500">เดือน:</label>
+        <input id="monthFilter" type="month" class="px-3 py-1.5 text-sm bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+      </div>
+    </div>
+
+    <!-- Demo Banner -->
+    <div id="demoBanner" class="bg-indigo-50 border border-indigo-200 rounded-2xl px-4 py-3 flex flex-wrap items-center justify-between gap-3">
+      <div class="flex items-center gap-2.5 text-sm text-indigo-900">
+        <i data-lucide="sparkles" class="w-4 h-4 text-indigo-600 shrink-0"></i>
+        <span>กำลังแสดงข้อมูลตัวอย่างเพื่อให้เห็นภาพรวมและการคำนวณ คุณสามารถเพิ่มรายการใหม่หรือล้างข้อมูลตัวอย่างได้</span>
+      </div>
+      <button id="btnClearDemo" type="button" class="text-xs font-semibold text-indigo-700 hover:text-indigo-900 underline underline-offset-2">ล้างข้อมูลตัวอย่าง</button>
+    </div>
+
+    <!-- TAB 1: DASHBOARD & RECORDER -->
+    <section id="tab-dashboard" class="space-y-6 animate-fade-in">
+      <!-- KPI Summary Cards -->
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-medium text-slate-500">ชั่วโมง OT รวม (เดือนที่เลือก)</span>
+            <span class="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center"><i data-lucide="hourglass" class="w-4 h-4"></i></span>
+          </div>
+          <p id="kpiTotalHours" class="text-2xl font-bold text-slate-900 mt-2">0.00 ชม.</p>
+          <p id="kpiTotalSessions" class="text-xs text-slate-500 mt-1">0 รายการ</p>
+        </div>
+
+        <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-medium text-slate-500">ยอดเงิน OT รวม (บาท)</span>
+            <span class="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center"><i data-lucide="banknote" class="w-4 h-4"></i></span>
+          </div>
+          <p id="kpiTotalPay" class="text-2xl font-bold text-emerald-600 mt-2">฿0.00</p>
+          <p id="kpiAvgRate" class="text-xs text-slate-500 mt-1">เฉลี่ย ฿0.00 / ชม.</p>
+        </div>
+
+        <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-medium text-slate-500">ค่าจ้างปกติ / ชั่วโมง</span>
+            <span class="w-8 h-8 rounded-lg bg-sky-50 text-sky-600 flex items-center justify-center"><i data-lucide="calculator" class="w-4 h-4"></i></span>
+          </div>
+          <p id="kpiHourlyBase" class="text-2xl font-bold text-slate-900 mt-2">฿0.00</p>
+          <p id="kpiSalarySummary" class="text-xs text-slate-500 mt-1">ฐานเงินเดือน ฿25,000</p>
+        </div>
+
+        <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-medium text-slate-500">ประมาณการรายได้รวม</span>
+            <span class="w-8 h-8 rounded-lg bg-violet-50 text-violet-600 flex items-center justify-center"><i data-lucide="wallet" class="w-4 h-4"></i></span>
+          </div>
+          <p id="kpiGrossIncome" class="text-2xl font-bold text-slate-900 mt-2">฿0.00</p>
+          <p class="text-xs text-slate-500 mt-1">เงินเดือน + ค่า OT เดือนนี้</p>
+        </div>
+      </div>
+
+      <!-- Main Grid: Form + Salary Settings & Chart -->
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        <!-- Left: OT Entry Form -->
+        <div class="lg:col-span-5 bg-white rounded-2xl border border-slate-200 p-6 shadow-xs space-y-5">
+          <div class="flex items-center justify-between">
+            <h2 id="formHeading" class="text-base font-bold text-slate-900 flex items-center gap-2">
+              <i data-lucide="plus-circle" class="w-5 h-5 text-indigo-600"></i>
+              <span>บันทึกเวลาทำโอที</span>
+            </h2>
+            <button id="btnCancelEdit" type="button" class="hidden text-xs font-medium text-slate-500 hover:text-slate-800">ยกเลิกการแก้ไข</button>
+          </div>
+
+          <form id="otForm" class="space-y-4">
+            <input type="hidden" id="editRecordId" value="" />
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label for="otDate" class="block text-xs font-medium text-slate-700 mb-1">วันที่ทำโอที</label>
+                <input id="otDate" type="date" required class="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+              </div>
+              <div>
+                <label for="otEmployee" class="block text-xs font-medium text-slate-700 mb-1">ชื่อพนักงาน / แผนก</label>
+                <input id="otEmployee" type="text" placeholder="เช่น สมชาย (IT)" class="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+              </div>
+            </div>
+
+            <div class="grid grid-cols-3 gap-3">
+              <div>
+                <label for="otStart" class="block text-xs font-medium text-slate-700 mb-1">เวลาเริ่ม</label>
+                <input id="otStart" type="time" value="18:00" required class="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+              </div>
+              <div>
+                <label for="otEnd" class="block text-xs font-medium text-slate-700 mb-1">เวลาสิ้นสุด</label>
+                <input id="otEnd" type="time" value="21:00" required class="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+              </div>
+              <div>
+                <label for="otBreak" class="block text-xs font-medium text-slate-700 mb-1">หักพัก (นาที)</label>
+                <input id="otBreak" type="number" min="0" max="240" step="15" value="0" class="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+              </div>
+            </div>
+
+            <div>
+              <label for="otMultiplier" class="block text-xs font-medium text-slate-700 mb-1">อัตราตัวคูณ OT (กฎหมายแรงงานไทย)</label>
+              <select id="otMultiplier" class="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                <option value="1.5">1.5x — ล่วงเวลาวันทำงานปกติ</option>
+                <option value="1">1.0x — ทำงานวันหยุด (พนักงานรายเดือน)</option>
+                <option value="2">2.0x — ทำงานวันหยุด (พนักงานรายวัน)</option>
+                <option value="3">3.0x — ล่วงเวลาในวันหยุด</option>
+              </select>
+            </div>
+
+            <div>
+              <label for="otNote" class="block text-xs font-medium text-slate-700 mb-1">รายละเอียดงาน / หมายเหตุ</label>
+              <input id="otNote" type="text" placeholder="เช่น ปิดงบประจำเดือน, Deploy ระบบ" class="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+            </div>
+
+            <!-- Live Calculation Preview -->
+            <div class="bg-slate-50 border border-slate-200 rounded-xl p-4 flex items-center justify-between gap-4">
+              <div>
+                <p class="text-xs text-slate-500">ชั่วโมงสุทธิ</p>
+                <p id="previewHours" class="text-lg font-bold text-slate-900">3.00 ชม.</p>
+              </div>
+              <div class="text-right">
+                <p class="text-xs text-slate-500">ยอดเงิน OT โดยประมาณ</p>
+                <p id="previewPay" class="text-lg font-bold text-emerald-600">฿468.75</p>
+              </div>
+            </div>
+
+            <button id="btnSubmitOt" type="submit" class="w-full py-2.5 px-4 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-sm rounded-xl shadow-sm transition flex items-center justify-center gap-2">
+              <i data-lucide="save" class="w-4 h-4"></i>
+              <span>บันทึกเวลา OT</span>
+            </button>
+          </form>
+        </div>
+
+        <!-- Right: Salary Settings + Chart -->
+        <div class="lg:col-span-7 space-y-6">
+          <!-- Salary & Formula Settings -->
+          <div class="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs">
+            <div class="flex items-center justify-between mb-4">
+              <h2 class="text-base font-bold text-slate-900 flex items-center gap-2">
+                <i data-lucide="sliders-horizontal" class="w-5 h-5 text-indigo-600"></i>
+                <span>ตั้งค่าฐานเงินเดือนและสูตรคำนวณ</span>
+              </h2>
+              <span class="text-xs text-slate-500">สูตร: เงินเดือน ÷ วัน ÷ ชั่วโมง</span>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div>
+                <label for="baseSalary" class="block text-xs font-medium text-slate-700 mb-1">ฐานเงินเดือน (บาท)</label>
+                <input id="baseSalary" type="number" min="0" step="500" value="25000" class="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+              </div>
+              <div>
+                <label for="workDays" class="block text-xs font-medium text-slate-700 mb-1">วันทำงาน/เดือน</label>
+                <input id="workDays" type="number" min="1" max="31" value="30" class="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+              </div>
+              <div>
+                <label for="workHours" class="block text-xs font-medium text-slate-700 mb-1">ชั่วโมง/วัน</label>
+                <input id="workHours" type="number" min="1" max="24" value="8" class="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+              </div>
+            </div>
+          </div>
+
+          <!-- Chart Card -->
+          <div class="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs">
+            <div class="flex items-center justify-between mb-3">
+              <h2 class="text-base font-bold text-slate-900 flex items-center gap-2">
+                <i data-lucide="bar-chart-3" class="w-5 h-5 text-indigo-600"></i>
+                <span>สรุปชั่วโมงและค่า OT แยกตามอัตรา</span>
+              </h2>
+            </div>
+            <div class="relative h-64">
+              <canvas id="otChart"></canvas>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Recent Entries Preview -->
+      <div class="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs">
+        <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+          <h2 class="text-base font-bold text-slate-900">รายการ OT ล่าสุด (เดือนที่เลือก)</h2>
+          <div class="flex items-center gap-2">
+            <button id="btnExportCsvQuick" type="button" class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition">
+              <i data-lucide="download" class="w-3.5 h-3.5"></i>
+              <span>ส่งออก CSV</span>
+            </button>
+          </div>
+        </div>
+        <div id="recentListContainer" class="overflow-x-auto"></div>
+      </div>
+    </section>
+
+    <!-- TAB 2: FULL HISTORY -->
+    <section id="tab-history" class="hidden space-y-4 animate-fade-in">
+      <div class="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs space-y-4">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 class="text-base font-bold text-slate-900">ประวัติการทำโอทีทั้งหมด</h2>
+            <p class="text-xs text-slate-500">ค้นหา กรอง แก้ไข หรือส่งออกข้อมูลเป็นไฟล์ CSV</p>
+          </div>
+          <div class="flex flex-wrap items-center gap-2">
+            <input id="searchInput" type="text" placeholder="ค้นหาชื่อ หรือ หมายเหตุ..." class="px-3 py-1.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+            <select id="typeFilter" class="px-3 py-1.5 text-sm border border-slate-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500">
+              <option value="all">ทุกอัตรา OT</option>
+              <option value="1.5">1.5x วันทำงานปกติ</option>
+              <option value="1">1.0x วันหยุด (รายเดือน)</option>
+              <option value="2">2.0x วันหยุด (รายวัน)</option>
+              <option value="3">3.0x ล่วงเวลาวันหยุด</option>
+            </select>
+            <button id="btnExportCsvFull" type="button" class="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl transition">
+              <i data-lucide="file-spreadsheet" class="w-4 h-4"></i>
+              <span>Export CSV</span>
+            </button>
+          </div>
+        </div>
+        <div id="fullHistoryContainer" class="overflow-x-auto"></div>
+      </div>
+    </section>
+
+    <!-- TAB 3: GOOGLE SHEETS & GITHUB SETUP -->
+    <section id="tab-setup" class="hidden space-y-6 animate-fade-in">
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        <!-- Connection Settings -->
+        <div class="lg:col-span-5 bg-white rounded-2xl border border-slate-200 p-6 shadow-xs space-y-5">
+          <div>
+            <h2 class="text-base font-bold text-slate-900 flex items-center gap-2">
+              <i data-lucide="link" class="w-5 h-5 text-indigo-600"></i>
+              <span>เชื่อมต่อ Google Sheets Web App</span>
+            </h2>
+            <p class="text-xs text-slate-500 mt-1">วาง Web App URL ที่ได้จากการ Deploy Google Apps Script เพื่อใช้ Google Sheets เป็นฐานข้อมูลจริง</p>
+          </div>
+
+          <div class="space-y-3">
+            <div>
+              <label for="gasUrlInput" class="block text-xs font-medium text-slate-700 mb-1">Google Apps Script Web App URL</label>
+              <input id="gasUrlInput" type="url" placeholder="https://script.google.com/macros/s/.../exec" class="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+            </div>
+            <div class="flex flex-wrap gap-2">
+              <button id="btnSaveGasUrl" type="button" class="flex-1 py-2 px-4 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-xl transition">บันทึกและทดสอบ</button>
+              <button id="btnPullFromSheet" type="button" class="py-2 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-medium rounded-xl transition">ดึงข้อมูลจากชีท</button>
+            </div>
+          </div>
+
+          <hr class="border-slate-200" />
+
+          <div class="space-y-3">
+            <h3 class="text-sm font-bold text-slate-900 flex items-center gap-2">
+              <i data-lucide="github" class="w-4 h-4"></i>
+              <span>วิธีนำขึ้น GitHub Pages (ฟรี)</span>
+            </h3>
+            <ol class="text-xs text-slate-600 space-y-2 list-decimal list-inside leading-relaxed">
+              <li>กดปุ่ม <strong>ดาวน์โหลด index.html</strong> ด้านล่าง เพื่อบันทึกไฟล์เว็บแอปนี้ลงเครื่อง</li>
+              <li>สร้าง Repository ใหม่บน <strong>GitHub</strong> (เช่น <code class="bg-slate-100 px-1 py-0.5 rounded">ot-tracker</code>) แล้วอัปโหลดไฟล์ <code class="bg-slate-100 px-1 py-0.5 rounded">index.html</code></li>
+              <li>ไปที่ <strong>Settings &gt; Pages</strong> เลือก Branch <code class="bg-slate-100 px-1 py-0.5 rounded">main</code> และโฟลเดอร์ <code class="bg-slate-100 px-1 py-0.5 rounded">/ (root)</code> แล้วกด Save</li>
+              <li>เปิดลิงก์ GitHub Pages ของคุณ แล้วนำ Web App URL จาก Google Sheets มาใส่ในช่องด้านบน</li>
+            </ol>
+            <button id="btnDownloadHtml" type="button" class="w-full py-2.5 px-4 bg-slate-900 hover:bg-slate-800 text-white text-sm font-semibold rounded-xl transition flex items-center justify-center gap-2">
+              <i data-lucide="download" class="w-4 h-4"></i>
+              <span>ดาวน์โหลด index.html สำหรับ GitHub</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Google Apps Script Code -->
+        <div class="lg:col-span-7 bg-white rounded-2xl border border-slate-200 p-6 shadow-xs space-y-4">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <h2 class="text-base font-bold text-slate-900">โค้ดฐานข้อมูล Google Sheets (Apps Script)</h2>
+              <p class="text-xs text-slate-500">เปิด Google Sheets &gt; ส่วนขยาย (Extensions) &gt; Apps Script &gt; วางโค้ดนี้ลงใน <code class="bg-slate-100 px-1 rounded">Code.gs</code></p>
+            </div>
+            <button id="btnCopyGasCode" type="button" class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-xl transition">
+              <i data-lucide="copy" class="w-3.5 h-3.5"></i>
+              <span>คัดลอกโค้ด</span>
+            </button>
+          </div>
+
+          <pre id="gasCodeBlock" class="bg-slate-900 text-slate-100 text-xs p-4 rounded-xl overflow-x-auto leading-relaxed font-mono max-h-96"></pre>
+
+          <div class="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-900 space-y-1">
+            <p class="font-semibold">ขั้นตอนการ Deploy ใน Apps Script:</p>
+            <p>กด <strong>Deploy &gt; New deployment &gt; Web app</strong> • ตั้งค่า <em>Execute as: Me</em> และ <em>Who has access: Anyone</em> จากนั้นคัดลอก Web App URL มาวางในช่องด้านซ้าย</p>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    // ---------- Google Apps Script Template ----------
+    const GAS_CODE = `// วางโค้ดนี้ใน Google Sheets > Extensions > Apps Script (Code.gs)
+const SHEET_NAME = 'OT_Records';
+
+function getOrCreateSheet() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let sheet = ss.getSheetByName(SHEET_NAME);
+  if (!sheet) {
+    sheet = ss.insertSheet(SHEET_NAME);
+    sheet.appendRow(['id', 'date', 'employee', 'start', 'end', 'breakMin', 'hours', 'multiplier', 'hourlyBase', 'pay', 'note', 'createdAt']);
+    sheet.getRange(1, 1, 1, 12).setFontWeight('bold').setBackground('#e0e7ff');
+  }
+  return sheet;
+}
+
+function doGet(e) {
+  const sheet = getOrCreateSheet();
+  const rows = sheet.getDataRange().getValues();
+  const headers = rows[0];
+  const records = rows.slice(1).filter(r => r[0]).map(row => {
+    const obj = {};
+    headers.forEach((h, i) => obj[h] = row[i]);
+    return obj;
+  });
+  return ContentService.createTextOutput(JSON.stringify({ status: 'ok', records }))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+function doPost(e) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  try {
+    const payload = JSON.parse(e.postData.contents);
+    const sheet = getOrCreateSheet();
+    const action = payload.action || 'upsert';
+
+    if (action === 'delete') {
+      const rows = sheet.getDataRange().getValues();
+      for (let i = rows.length - 1; i >= 1; i--) {
+        if (String(rows[i][0]) === String(payload.id)) {
+          sheet.deleteRow(i + 1);
+          break;
+        }
+      }
+      return ContentService.createTextOutput(JSON.stringify({ status: 'deleted', id: payload.id }))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+
+    const r = payload.record;
+    const rowValues = [r.id, r.date, r.employee, r.start, r.end, r.breakMin, r.hours, r.multiplier, r.hourlyBase, r.pay, r.note, r.createdAt];
+    const rows = sheet.getDataRange().getValues();
+    let updated = false;
+    for (let i = 1; i < rows.length; i++) {
+      if (String(rows[i][0]) === String(r.id)) {
+        sheet.getRange(i + 1, 1, 1, rowValues.length).setValues([rowValues]);
+        updated = true;
+        break;
+      }
+    }
+    if (!updated) {
+      sheet.appendRow(rowValues);
+    }
+    return ContentService.createTextOutput(JSON.stringify({ status: 'saved', record: r }))
+      .setMimeType(ContentService.MimeType.JSON);
+  } finally {
+    lock.releaseLock();
+  }
+}`;
+
+    // ---------- App State ----------
+    const STORAGE_KEY_RECORDS = 'ot_tracker_records_v1';
+    const STORAGE_KEY_SETTINGS = 'ot_tracker_settings_v1';
+    const STORAGE_KEY_DEMO = 'ot_tracker_is_demo_v1';
+
+    function getCurrentMonthStr() {
+      const now = new Date();
+      return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    }
+
+    function getTodayStr() {
+      const now = new Date();
+      return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    }
+
+    function createDemoRecords() {
+      const m = getCurrentMonthStr();
+      return [
+        {
+          id: 'demo-1',
+          date: `${m}-05`,
+          employee: 'ตัวอย่าง: ทีมพัฒนา (IT)',
+          start: '18:00',
+          end: '21:00',
+          breakMin: 0,
+          hours: 3,
+          multiplier: 1.5,
+          hourlyBase: 104.17,
+          pay: 468.75,
+          note: 'อัปเดตระบบและตรวจสอบฐานข้อมูล',
+          createdAt: new Date().toISOString()
+        },
+        {
+          id: 'demo-2',
+          date: `${m}-12`,
+          employee: 'ตัวอย่าง: ทีมพัฒนา (IT)',
+          start: '09:00',
+          end: '17:00',
+          breakMin: 60,
+          hours: 7,
+          multiplier: 1,
+          hourlyBase: 104.17,
+          pay: 729.17,
+          note: 'เข้าเวรวันหยุดประจำสัปดาห์',
+          createdAt: new Date().toISOString()
+        },
+        {
+          id: 'demo-3',
+          date: `${m}-14`,
+          employee: 'ตัวอย่าง: ทีมพัฒนา (IT)',
+          start: '17:30',
+          end: '20:30',
+          breakMin: 0,
+          hours: 3,
+          multiplier: 3,
+          hourlyBase: 104.17,
+          pay: 937.50,
+          note: 'ล่วงเวลาวันหยุดนักขัตฤกษ์',
+          createdAt: new Date().toISOString()
+        }
+      ];
+    }
+
+    let state = {
+      records: [],
+      settings: {
+        baseSalary: 25000,
+        workDays: 30,
+        workHours: 8,
+        gasUrl: ''
+      },
+      isDemo: true,
+      selectedMonth: getCurrentMonthStr(),
+      activeTab: 'dashboard',
+      chartInstance: null
+    };
+
+    // ---------- Safe Storage ----------
+    function loadState() {
+      try {
+        const savedSettings = localStorage.getItem(STORAGE_KEY_SETTINGS);
+        if (savedSettings) {
+          state.settings = { ...state.settings, ...JSON.parse(savedSettings) };
+        }
+        const savedDemo = localStorage.getItem(STORAGE_KEY_DEMO);
+        state.isDemo = savedDemo === null ? true : JSON.parse(savedDemo);
+
+        const savedRecords = localStorage.getItem(STORAGE_KEY_RECORDS);
+        if (savedRecords) {
+          state.records = JSON.parse(savedRecords);
+        } else if (state.isDemo) {
+          state.records = createDemoRecords();
+        }
+      } catch (err) {
+        state.records = createDemoRecords();
+      }
+    }
+
+    function saveState() {
+      try {
+        localStorage.setItem(STORAGE_KEY_RECORDS, JSON.stringify(state.records));
+        localStorage.setItem(STORAGE_KEY_SETTINGS, JSON.stringify(state.settings));
+        localStorage.setItem(STORAGE_KEY_DEMO, JSON.stringify(state.isDemo));
+      } catch (err) {
+        // Ignore storage errors in restricted environments
+      }
+    }
+
+    // ---------- Calculations ----------
+    function getHourlyBase() {
+      const salary = Number(state.settings.baseSalary) || 0;
+      const days = Number(state.settings.workDays) || 30;
+      const hours = Number(state.settings.workHours) || 8;
+      if (days <= 0 || hours <= 0) return 0;
+      return salary / days / hours;
+    }
+
+    function calculateDurationHours(startStr, endStr, breakMin) {
+      if (!startStr || !endStr) return 0;
+      const [sh, sm] = startStr.split(':').map(Number);
+      const [eh, em] = endStr.split(':').map(Number);
+      if (isNaN(sh) || isNaN(sm) || isNaN(eh) || isNaN(em)) return 0;
+      let startMinutes = sh * 60 + sm;
+      let endMinutes = eh * 60 + em;
+      if (endMinutes <= startMinutes) {
+        endMinutes += 24 * 60; // Cross midnight support
+      }
+      const netMinutes = Math.max(0, endMinutes - startMinutes - (Number(breakMin) || 0));
+      return Number((netMinutes / 60).toFixed(2));
+    }
+
+    function formatCurrency(num) {
+      return '฿' + (Number(num) || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+
+    function getMultiplierLabel(mult) {
+      const m = Number(mult);
+      if (m === 1.5) return '1.5x ปกติ';
+      if (m === 1) return '1.0x วันหยุด (รายเดือน)';
+      if (m === 2) return '2.0x วันหยุด (รายวัน)';
+      if (m === 3) return '3.0x ล่วงเวลาวันหยุด';
+      return `${m}x`;
+    }
+
+    function getMultiplierBadgeClass(mult) {
+      const m = Number(mult);
+      if (m === 1.5) return 'bg-indigo-50 text-indigo-700 border-indigo-200';
+      if (m === 1) return 'bg-sky-50 text-sky-700 border-sky-200';
+      if (m === 2) return 'bg-amber-50 text-amber-700 border-amber-200';
+      if (m === 3) return 'bg-rose-50 text-rose-700 border-rose-200';
+      return 'bg-slate-100 text-slate-700 border-slate-200';
+    }
+
+    // ---------- UI Helpers ----------
+    function showToast(message, type = 'info') {
+      const container = document.getElementById('toastContainer');
+      const colors = {
+        success: 'bg-emerald-600 text-white',
+        error: 'bg-rose-600 text-white',
+        info: 'bg-slate-900 text-white',
+        warning: 'bg-amber-500 text-white'
+      };
+      const el = document.createElement('div');
+      el.className = `px-4 py-3 rounded-xl shadow-lg text-sm font-medium animate-fade-in flex items-center gap-2 ${colors[type] || colors.info}`;
+      el.textContent = message;
+      container.appendChild(el);
+      setTimeout(() => {
+        el.remove();
+      }, 3500);
+    }
+
+    function showConfirmModal(title, message, onConfirm) {
+      const modal = document.getElementById('confirmModal');
+      document.getElementById('confirmTitle').textContent = title;
+      document.getElementById('confirmMessage').textContent = message;
+      modal.classList.remove('hidden');
+
+      const okBtn = document.getElementById('confirmOkBtn');
+      const cancelBtn = document.getElementById('confirmCancelBtn');
+
+      const cleanup = () => {
+        modal.classList.add('hidden');
+        okBtn.onclick = null;
+        cancelBtn.onclick = null;
+      };
+      okBtn.onclick = () => {
+        cleanup();
+        onConfirm();
+      };
+      cancelBtn.onclick = cleanup;
+    }
+
+    function updatePreview() {
+      const start = document.getElementById('otStart').value;
+      const end = document.getElementById('otEnd').value;
+      const breakMin = document.getElementById('otBreak').value;
+      const mult = Number(document.getElementById('otMultiplier').value) || 1.5;
+
+      const hours = calculateDurationHours(start, end, breakMin);
+      const hourlyBase = getHourlyBase();
+      const pay = hours * hourlyBase * mult;
+
+      document.getElementById('previewHours').textContent = `${hours.toFixed(2)} ชม.`;
+      document.getElementById('previewPay').textContent = formatCurrency(pay);
+    }
+
+    function updateSyncBadge() {
+      const badge = document.getElementById('syncStatusBadge');
+      const url = (state.settings.gasUrl || '').trim();
+      if (url.startsWith('https://script.google.com/')) {
+        badge.className = 'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-200';
+        badge.innerHTML = `<span class="w-2 h-2 rounded-full bg-emerald-500"></span><span class="hidden sm:inline">เชื่อมต่อ Google Sheets</span><span class="sm:hidden">Sheets</span>`;
+      } else {
+        badge.className = 'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-amber-50 text-amber-700 border border-amber-200';
+        badge.innerHTML = `<span class="w-2 h-2 rounded-full bg-amber-500"></span><span class="hidden sm:inline">โหมดออฟไลน์ (Local)</span><span class="sm:hidden">Local</span>`;
+      }
+    }
+
+    // ---------- Google Sheets Sync ----------
+    async function syncRecordToSheet(action, payload) {
+      const url = (state.settings.gasUrl || '').trim();
+      if (!url.startsWith('https://script.google.com/')) return false;
+      try {
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({ action, ...payload })
+        });
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        return true;
+      } catch (err) {
+        showToast('บันทึกในเครื่องแล้ว แต่ซิงค์ขึ้น Google Sheets ไม่สำเร็จ', 'warning');
+        return false;
+      }
+    }
+
+    async function pullRecordsFromSheet() {
+      const url = (state.settings.gasUrl || '').trim();
+      if (!url.startsWith('https://script.google.com/')) {
+        showToast('กรุณากรอก Google Apps Script Web App URL ก่อน', 'warning');
+        return;
+      }
+      try {
+        showToast('กำลังดึงข้อมูลจาก Google Sheets...', 'info');
+        const res = await fetch(url);
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const data = await res.json();
+        if (data && Array.isArray(data.records)) {
+          state.records = data.records.map(r => ({
+            ...r,
+            date: String(r.date).slice(0, 10),
+            breakMin: Number(r.breakMin) || 0,
+            hours: Number(r.hours) || 0,
+            multiplier: Number(r.multiplier) || 1.5,
+            hourlyBase: Number(r.hourlyBase) || 0,
+            pay: Number(r.pay) || 0
+          }));
+          state.isDemo = false;
+          saveState();
+          renderAll();
+          showToast(`ซิงค์สำเร็จ! โหลดข้อมูล ${state.records.length} รายการ`, 'success');
+        } else {
+          showToast('รูปแบบข้อมูลจากชีทไม่ถูกต้อง', 'error');
+        }
+      } catch (err) {
+        showToast('ไม่สามารถเชื่อมต่อ Google Sheets ได้ ตรวจสอบการ Deploy (Anyone)', 'error');
+      }
+    }
+
+    // ---------- Render Functions ----------
+    function renderTable(records, targetId, limit = null) {
+      const container = document.getElementById(targetId);
+      const list = limit ? records.slice(0, limit) : records;
+      if (list.length === 0) {
+        container.innerHTML = `
+          <div class="text-center py-10 text-slate-400">
+            <p class="text-sm font-medium text-slate-500">ยังไม่มีรายการ OT ในช่วงเวลาที่เลือก</p>
+            <p class="text-xs mt-1">เพิ่มรายการใหม่ได้จากแบบฟอร์มด้านบน</p>
+          </div>
+        `;
+        return;
+      }
+
+      const rowsHtml = list.map(r => `
+        <tr class="border-b border-slate-100 hover:bg-slate-50/70 transition">
+          <td class="py-3 px-3 text-sm font-medium text-slate-900 whitespace-nowrap">${escapeHtml(r.date)}</td>
+          <td class="py-3 px-3 text-sm text-slate-600 whitespace-nowrap">${escapeHtml(r.employee || '-')}</td>
+          <td class="py-3 px-3 text-sm text-slate-700 whitespace-nowrap">${escapeHtml(r.start)} – ${escapeHtml(r.end)}${r.breakMin ? ` <span class="text-xs text-slate-400">(-${r.breakMin}น.)</span>` : ''}</td>
+          <td class="py-3 px-3 whitespace-nowrap">
+            <span class="inline-flex items-center px-2 py-0.5 rounded-lg text-xs font-medium border ${getMultiplierBadgeClass(r.multiplier)}">${getMultiplierLabel(r.multiplier)}</span>
+          </td>
+          <td class="py-3 px-3 text-sm font-semibold text-slate-900 text-right whitespace-nowrap">${Number(r.hours).toFixed(2)} ชม.</td>
+          <td class="py-3 px-3 text-sm font-bold text-emerald-600 text-right whitespace-nowrap">${formatCurrency(r.pay)}</td>
+          <td class="py-3 px-3 text-sm text-slate-500 max-w-xs truncate">${escapeHtml(r.note || '-')}</td>
+          <td class="py-3 px-3 text-right whitespace-nowrap">
+            <button type="button" data-action="edit" data-id="${escapeHtml(r.id)}" class="p-1.5 text-slate-400 hover:text-indigo-600 rounded-lg hover:bg-indigo-50 transition" title="แก้ไข">
+              <i data-lucide="pencil" class="w-4 h-4 pointer-events-none"></i>
+            </button>
+            <button type="button" data-action="delete" data-id="${escapeHtml(r.id)}" class="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition" title="ลบ">
+              <i data-lucide="trash-2" class="w-4 h-4 pointer-events-none"></i>
+            </button>
+          </td>
+        </tr>
+      `).join('');
+
+      container.innerHTML = `
+        <table class="w-full text-left border-collapse">
+          <thead>
+            <tr class="border-b border-slate-200 text-xs font-semibold text-slate-500 uppercase tracking-wider">
+              <th class="py-2.5 px-3">วันที่</th>
+              <th class="py-2.5 px-3">พนักงาน</th>
+              <th class="py-2.5 px-3">ช่วงเวลา</th>
+              <th class="py-2.5 px-3">อัตรา OT</th>
+              <th class="py-2.5 px-3 text-right">ชั่วโมง</th>
+              <th class="py-2.5 px-3 text-right">ค่า OT</th>
+              <th class="py-2.5 px-3">หมายเหตุ</th>
+              <th class="py-2.5 px-3 text-right">จัดการ</th>
+            </tr>
+          </thead>
+          <tbody>${rowsHtml}</tbody>
+        </table>
+      `;
+    }
+
+    function escapeHtml(str) {
+      return String(str ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    function renderChart(monthRecords) {
+      const ctx = document.getElementById('otChart').getContext('2d');
+      const buckets = { '1.5': { hours: 0, pay: 0 }, '1': { hours: 0, pay: 0 }, '2': { hours: 0, pay: 0 }, '3': { hours: 0, pay: 0 } };
+      monthRecords.forEach(r => {
+        const key = String(r.multiplier);
+        if (!buckets[key]) buckets[key] = { hours: 0, pay: 0 };
+        buckets[key].hours += Number(r.hours) || 0;
+        buckets[key].pay += Number(r.pay) || 0;
+      });
+
+      const labels = ['1.5x ปกติ', '1.0x วันหยุด(เดือน)', '2.0x วันหยุด(วัน)', '3.0x ล่วงเวลาวันหยุด'];
+      const hoursData = [buckets['1.5'].hours, buckets['1'].hours, buckets['2'].hours, buckets['3'].hours];
+      const payData = [buckets['1.5'].pay, buckets['1'].pay, buckets['2'].pay, buckets['3'].pay];
+
+      if (state.chartInstance) {
+        state.chartInstance.destroy();
+      }
+
+      state.chartInstance = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels,
+          datasets: [
+            {
+              label: 'ชั่วโมง OT',
+              data: hoursData,
+              backgroundColor: '#4f46e5',
+              borderRadius: 8,
+              yAxisID: 'y'
+            },
+            {
+              label: 'ยอดเงิน (บาท)',
+              data: payData,
+              backgroundColor: '#10b981',
+              borderRadius: 8,
+              yAxisID: 'y1'
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          interaction: { mode: 'index', intersect: false },
+          plugins: {
+            legend: { position: 'top', labels: { boxWidth: 12, font: { size: 12 } } }
+          },
+          scales: {
+            y: { type: 'linear', position: 'left', beginAtZero: true, title: { display: true, text: 'ชั่วโมง' } },
+            y1: { type: 'linear', position: 'right', beginAtZero: true, grid: { drawOnChartArea: false }, title: { display: true, text: 'บาท' } }
+          }
+        }
+      });
+    }
+
+    function renderAll() {
+      const sorted = [...state.records].sort((a, b) => b.date.localeCompare(a.date) || b.start.localeCompare(a.start));
+      const monthRecords = sorted.filter(r => !state.selectedMonth || r.date.startsWith(state.selectedMonth));
+
+      const totalHours = monthRecords.reduce((s, r) => s + (Number(r.hours) || 0), 0);
+      const totalPay = monthRecords.reduce((s, r) => s + (Number(r.pay) || 0), 0);
+      const hourlyBase = getHourlyBase();
+      const avgRate = totalHours > 0 ? totalPay / totalHours : 0;
+      const grossIncome = (Number(state.settings.baseSalary) || 0) + totalPay;
+
+      document.getElementById('kpiTotalHours').textContent = `${totalHours.toFixed(2)} ชม.`;
+      document.getElementById('kpiTotalSessions').textContent = `${monthRecords.length} รายการ`;
+      document.getElementById('kpiTotalPay').textContent = formatCurrency(totalPay);
+      document.getElementById('kpiAvgRate').textContent = `เฉลี่ย ${formatCurrency(avgRate)} / ชม.`;
+      document.getElementById('kpiHourlyBase').textContent = formatCurrency(hourlyBase);
+      document.getElementById('kpiSalarySummary').textContent = `ฐานเงินเดือน ${formatCurrency(state.settings.baseSalary)}`;
+      document.getElementById('kpiGrossIncome').textContent = formatCurrency(grossIncome);
+
+      document.getElementById('historyCountBadge').textContent = String(sorted.length);
+      document.getElementById('demoBanner').classList.toggle('hidden', !state.isDemo);
+
+      renderTable(monthRecords, 'recentListContainer', 8);
+
+      // History Tab Filters
+      const searchQ = (document.getElementById('searchInput').value || '').toLowerCase();
+      const typeQ = document.getElementById('typeFilter').value;
+      const filteredHistory = sorted.filter(r => {
+        const matchSearch = !searchQ || (r.employee || '').toLowerCase().includes(searchQ) || (r.note || '').toLowerCase().includes(searchQ) || r.date.includes(searchQ);
+        const matchType = typeQ === 'all' || String(r.multiplier) === typeQ;
+        return matchSearch && matchType;
+      });
+      renderTable(filteredHistory, 'fullHistoryContainer');
+
+      renderChart(monthRecords);
+      updatePreview();
+      updateSyncBadge();
+      if (window.lucide) lucide.createIcons();
+    }
+
+    // ---------- Actions ----------
+    function exportCsv(records) {
+      const headers = ['id', 'date', 'employee', 'start', 'end', 'breakMin', 'hours', 'multiplier', 'hourlyBase', 'pay', 'note'];
+      const lines = [headers.join(',')];
+      records.forEach(r => {
+        const row = headers.map(h => {
+          const val = String(r[h] ?? '').replace(/"/g, '""');
+          return `"${val}"`;
+        });
+        lines.push(row.join(','));
+      });
+      const blob = new Blob(['\uFEFF' + lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `ot-records-${state.selectedMonth || 'all'}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+      showToast('ส่งออกไฟล์ CSV เรียบร้อยแล้ว', 'success');
+    }
+
+    function startEditRecord(id) {
+      const rec = state.records.find(r => String(r.id) === String(id));
+      if (!rec) return;
+      document.getElementById('editRecordId').value = rec.id;
+      document.getElementById('otDate').value = rec.date;
+      document.getElementById('otEmployee').value = rec.employee || '';
+      document.getElementById('otStart').value = rec.start;
+      document.getElementById('otEnd').value = rec.end;
+      document.getElementById('otBreak').value = rec.breakMin || 0;
+      document.getElementById('otMultiplier').value = String(rec.multiplier);
+      document.getElementById('otNote').value = rec.note || '';
+
+      document.getElementById('formHeading').innerHTML = `<i data-lucide="pencil" class="w-5 h-5 text-amber-600"></i><span>แก้ไขรายการโอที</span>`;
+      document.getElementById('btnCancelEdit').classList.remove('hidden');
+      document.getElementById('btnSubmitOt').innerHTML = `<i data-lucide="check" class="w-4 h-4"></i><span>อัปเดตรายการ</span>`;
+
+      switchTab('dashboard');
+      updatePreview();
+      if (window.lucide) lucide.createIcons();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    function resetForm() {
+      document.getElementById('editRecordId').value = '';
+      document.getElementById('otDate').value = getTodayStr();
+      document.getElementById('otStart').value = '18:00';
+      document.getElementById('otEnd').value = '21:00';
+      document.getElementById('otBreak').value = '0';
+      document.getElementById('otNote').value = '';
+      document.getElementById('formHeading').innerHTML = `<i data-lucide="plus-circle" class="w-5 h-5 text-indigo-600"></i><span>บันทึกเวลาทำโอที</span>`;
+      document.getElementById('btnCancelEdit').classList.add('hidden');
+      document.getElementById('btnSubmitOt').innerHTML = `<i data-lucide="save" class="w-4 h-4"></i><span>บันทึกเวลา OT</span>`;
+      updatePreview();
+      if (window.lucide) lucide.createIcons();
+    }
+
+    function switchTab(tabName) {
+      state.activeTab = tabName;
+      ['dashboard', 'history', 'setup'].forEach(t => {
+        document.getElementById(`tab-${t}`).classList.toggle('hidden', t !== tabName);
+      });
+      document.querySelectorAll('.nav-tab').forEach(btn => {
+        const active = btn.dataset.tab === tabName;
+        btn.classList.toggle('tab-active', active);
+        btn.classList.toggle('tab-inactive', !active);
+      });
+    }
+
+    // ---------- Event Listeners ----------
+    document.addEventListener('DOMContentLoaded', () => {
+      loadState();
+
+      // Populate initial inputs
+      document.getElementById('gasCodeBlock').textContent = GAS_CODE;
+      document.getElementById('otDate').value = getTodayStr();
+      document.getElementById('monthFilter').value = state.selectedMonth;
+      document.getElementById('baseSalary').value = state.settings.baseSalary;
+      document.getElementById('workDays').value = state.settings.workDays;
+      document.getElementById('workHours').value = state.settings.workHours;
+      document.getElementById('gasUrlInput').value = state.settings.gasUrl || '';
+
+      renderAll();
+
+      // Tab switching
+      document.querySelectorAll('.nav-tab').forEach(btn => {
+        btn.addEventListener('click', () => switchTab(btn.dataset.tab));
+      });
+
+      // Month filter
+      document.getElementById('monthFilter').addEventListener('change', (e) => {
+        state.selectedMonth = e.target.value;
+        renderAll();
+      });
+
+      // Clear demo
+      document.getElementById('btnClearDemo').addEventListener('click', () => {
+        state.records = state.records.filter(r => !String(r.id).startsWith('demo-'));
+        state.isDemo = false;
+        saveState();
+        renderAll();
+        showToast('ล้างข้อมูลตัวอย่างเรียบร้อยแล้ว', 'info');
+      });
+
+      // Live preview inputs
+      ['otStart', 'otEnd', 'otBreak', 'otMultiplier'].forEach(id => {
+        document.getElementById(id).addEventListener('input', updatePreview);
+      });
+
+      // Salary settings live update
+      ['baseSalary', 'workDays', 'workHours'].forEach(id => {
+        document.getElementById(id).addEventListener('input', () => {
+          state.settings.baseSalary = Number(document.getElementById('baseSalary').value) || 0;
+          state.settings.workDays = Number(document.getElementById('workDays').value) || 30;
+          state.settings.workHours = Number(document.getElementById('workHours').value) || 8;
+          saveState();
+          renderAll();
+        });
+      });
+
+      // Form Submit
+      document.getElementById('otForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const editId = document.getElementById('editRecordId').value;
+        const date = document.getElementById('otDate').value;
+        const employee = document.getElementById('otEmployee').value.trim() || 'พนักงานทั่วไป';
+        const start = document.getElementById('otStart').value;
+        const end = document.getElementById('otEnd').value;
+        const breakMin = Number(document.getElementById('otBreak').value) || 0;
+        const multiplier = Number(document.getElementById('otMultiplier').value) || 1.5;
+        const note = document.getElementById('otNote').value.trim();
+
+        const hours = calculateDurationHours(start, end, breakMin);
+        if (hours <= 0) {
+          showToast('จำนวนชั่วโมงสุทธิต้องมากกว่า 0 ชั่วโมง', 'error');
+          return;
+        }
+        const hourlyBase = Number(getHourlyBase().toFixed(2));
+        const pay = Number((hours * getHourlyBase() * multiplier).toFixed(2));
+
+        const record = {
+          id: editId || 'ot-' + Date.now(),
+          date,
+          employee,
+          start,
+          end,
+          breakMin,
+          hours,
+          multiplier,
+          hourlyBase,
+          pay,
+          note,
+          createdAt: new Date().toISOString()
+        };
+
+        if (editId) {
+          const idx = state.records.findIndex(r => String(r.id) === String(editId));
+          if (idx >= 0) state.records[idx] = record;
+        } else {
+          state.records.unshift(record);
+        }
+
+        state.isDemo = false;
+        saveState();
+        resetForm();
+        renderAll();
+        showToast(editId ? 'อัปเดตรายการ OT แล้ว' : 'บันทึกเวลา OT เรียบร้อย', 'success');
+
+        await syncRecordToSheet('upsert', { record });
+      });
+
+      document.getElementById('btnCancelEdit').addEventListener('click', resetForm);
+
+      // Table row actions (delegated)
+      ['recentListContainer', 'fullHistoryContainer'].forEach(containerId => {
+        document.getElementById(containerId).addEventListener('click', (e) => {
+          const btn = e.target.closest('button[data-action]');
+          if (!btn) return;
+          const id = btn.dataset.id;
+          if (btn.dataset.action === 'edit') {
+            startEditRecord(id);
+          } else if (btn.dataset.action === 'delete') {
+            showConfirmModal('ลบรายการโอที', 'คุณต้องการลบรายการนี้ใช่หรือไม่? การลบจะมีผลทั้งในเครื่องและ Google Sheets (หากเชื่อมต่อไว้)', async () => {
+              state.records = state.records.filter(r => String(r.id) !== String(id));
+              saveState();
+              renderAll();
+              showToast('ลบรายการเรียบร้อยแล้ว', 'info');
+              await syncRecordToSheet('delete', { id });
+            });
+          }
+        });
+      });
+
+      // History filters
+      document.getElementById('searchInput').addEventListener('input', renderAll);
+      document.getElementById('typeFilter').addEventListener('change', renderAll);
+
+      // CSV Exports
+      document.getElementById('btnExportCsvQuick').addEventListener('click', () => {
+        const monthRecords = state.records.filter(r => !state.selectedMonth || r.date.startsWith(state.selectedMonth));
+        exportCsv(monthRecords);
+      });
+      document.getElementById('btnExportCsvFull').addEventListener('click', () => exportCsv(state.records));
+
+      // GAS URL Save & Sync
+      document.getElementById('btnSaveGasUrl').addEventListener('click', async () => {
+        state.settings.gasUrl = document.getElementById('gasUrlInput').value.trim();
+        saveState();
+        updateSyncBadge();
+        await pullRecordsFromSheet();
+      });
+
+      document.getElementById('btnPullFromSheet').addEventListener('click', pullRecordsFromSheet);
+      document.getElementById('btnQuickSync').addEventListener('click', () => {
+        if ((state.settings.gasUrl || '').startsWith('https://script.google.com/')) {
+          pullRecordsFromSheet();
+        } else {
+          switchTab('setup');
+          showToast('ตั้งค่า Google Apps Script URL เพื่อซิงค์ข้อมูล', 'info');
+        }
+      });
+
+      // Copy GAS Code
+      document.getElementById('btnCopyGasCode').addEventListener('click', async () => {
+        try {
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            await navigator.clipboard.writeText(GAS_CODE);
+          } else {
+            const ta = document.createElement('textarea');
+            ta.value = GAS_CODE;
+            document.body.appendChild(ta);
+            ta.select();
+            document.execCommand('copy');
+            ta.remove();
+          }
+          showToast('คัดลอกโค้ด Apps Script แล้ว', 'success');
+        } catch (err) {
+          showToast('ไม่สามารถคัดลอกอัตโนมัติได้ กรุณาคลุมดำเพื่อคัดลอก', 'warning');
+        }
+      });
+
+      // Download index.html for GitHub
+      document.getElementById('btnDownloadHtml').addEventListener('click', () => {
+        const htmlContent = '<!DOCTYPE html>\n' + document.documentElement.outerHTML;
+        const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'index.html';
+        a.click();
+        URL.revokeObjectURL(url);
+        showToast('ดาวน์โหลด index.html สำหรับ GitHub Pages แล้ว', 'success');
+      });
+    });
+  </script>
+</body>
+</html>
