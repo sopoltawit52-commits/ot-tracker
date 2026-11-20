@@ -262,17 +262,6 @@
           <button id="btnCancelEdit" type="button" class="hidden text-xs font-medium text-rose-600 hover:text-rose-800 px-2.5 py-1 bg-rose-50 rounded-lg">ยกเลิกแก้ไข</button>
         </div>
 
-        <!-- Quick Presets for Mobile -->
-        <div>
-          <p class="text-xs font-medium text-slate-500 mb-2">เลือกช่วงเวลาด่วน:</p>
-          <div class="grid grid-cols-4 gap-2">
-            <button type="button" data-preset="18:00,19:00,0,1.5" class="preset-btn py-2 px-2 text-xs font-semibold bg-slate-100 hover:bg-indigo-50 hover:text-indigo-700 rounded-xl transition">+1 ชม.</button>
-            <button type="button" data-preset="18:00,20:00,0,1.5" class="preset-btn py-2 px-2 text-xs font-semibold bg-slate-100 hover:bg-indigo-50 hover:text-indigo-700 rounded-xl transition">+2 ชม.</button>
-            <button type="button" data-preset="18:00,21:00,0,1.5" class="preset-btn py-2 px-2 text-xs font-semibold bg-slate-100 hover:bg-indigo-50 hover:text-indigo-700 rounded-xl transition">+3 ชม.</button>
-            <button type="button" data-preset="09:00,18:00,60,1" class="preset-btn py-2 px-2 text-xs font-semibold bg-slate-100 hover:bg-indigo-50 hover:text-indigo-700 rounded-xl transition">วันหยุด 8ชม.</button>
-          </div>
-        </div>
-
         <form id="otForm" class="space-y-4">
           <input type="hidden" id="editRecordId" value="" />
 
@@ -284,15 +273,33 @@
           <div class="grid grid-cols-3 gap-2.5">
             <div>
               <label for="otStart" class="block text-xs font-medium text-slate-700 mb-1">เวลาเริ่ม</label>
-              <input id="otStart" type="time" value="18:00" required class="w-full px-3 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 min-h-[44px]" />
+              <input id="otStart" type="time" value="17:30" required class="w-full px-3 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 min-h-[44px]" />
             </div>
             <div>
               <label for="otEnd" class="block text-xs font-medium text-slate-700 mb-1">เวลาสิ้นสุด</label>
-              <input id="otEnd" type="time" value="21:00" required class="w-full px-3 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 min-h-[44px]" />
+              <input id="otEnd" type="time" value="20:30" required class="w-full px-3 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 min-h-[44px]" />
             </div>
             <div>
               <label for="otBreak" class="block text-xs font-medium text-slate-700 mb-1">พัก (นาที)</label>
               <input id="otBreak" type="number" min="0" max="240" step="15" value="0" class="w-full px-3 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 min-h-[44px]" />
+            </div>
+          </div>
+
+          <!-- Quick Duration Presets (based on Start Time, editable/addable) -->
+          <div class="space-y-2">
+            <div class="flex items-center justify-between">
+              <p class="text-xs font-medium text-slate-600">กดเลือกเวลาทำ OT ด่วน (คำนวณจากเวลาเริ่ม):</p>
+              <button id="btnToggleEditPresets" type="button" class="text-xs font-medium text-indigo-600 hover:text-indigo-800">แก้ไข/เพิ่มปุ่ม</button>
+            </div>
+            <div id="quickDurationContainer" class="grid grid-cols-4 gap-1.5"></div>
+            <div id="editPresetsBox" class="hidden bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-2">
+              <p class="text-[11px] text-slate-500">เพิ่มปุ่มเลือกเวลาด่วนใหม่ (หน่วยเป็นนาที เช่น 45 นาที หรือ 300 นาที = 5 ชม.)</p>
+              <div class="flex gap-2">
+                <input id="newPresetMinutes" type="number" min="15" max="720" step="15" placeholder="นาที เช่น 45" class="w-28 px-2.5 py-1.5 text-xs border border-slate-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                <input id="newPresetLabel" type="text" placeholder="ชื่อปุ่ม เช่น 45 นาที" class="flex-1 px-2.5 py-1.5 text-xs border border-slate-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                <button id="btnAddDurationPreset" type="button" class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-lg transition">เพิ่ม</button>
+              </div>
+              <div id="editPresetsList" class="flex flex-wrap gap-1.5 pt-1"></div>
             </div>
           </div>
 
@@ -372,15 +379,21 @@
           </div>
 
           <div class="space-y-4">
-            <div>
-              <label for="profileName" class="block text-xs font-medium text-slate-700 mb-1">ชื่อของคุณ (สำหรับแสดงบนหัวแอป)</label>
-              <input id="profileName" type="text" placeholder="เช่น บัญชีส่วนตัว" class="w-full px-3.5 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              <div>
+                <label for="profileName" class="block text-xs font-medium text-slate-700 mb-1">ชื่อของคุณ (สำหรับแสดงบนหัวแอป)</label>
+                <input id="profileName" type="text" placeholder="เช่น บัญชีส่วนตัว" class="w-full px-3.5 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+              </div>
+              <div>
+                <label for="defaultStartTime" class="block text-xs font-medium text-slate-700 mb-1">เวลาเริ่มทำ OT ปกติ</label>
+                <input id="defaultStartTime" type="time" value="17:30" class="w-full px-3.5 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+              </div>
             </div>
 
             <div class="grid grid-cols-3 gap-2.5">
               <div>
                 <label for="baseSalary" class="block text-xs font-medium text-slate-700 mb-1">เงินเดือน (บาท)</label>
-                <input id="baseSalary" type="number" min="0" step="500" value="25000" class="w-full px-3 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                <input id="baseSalary" type="number" min="0" step="500" value="16400" class="w-full px-3 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500" />
               </div>
               <div>
                 <label for="workDays" class="block text-xs font-medium text-slate-700 mb-1">วัน/เดือน</label>
@@ -397,7 +410,7 @@
               <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
                 <div>
                   <label for="allowancePosition" class="block text-xs text-slate-600 mb-1">ค่าตำแหน่ง</label>
-                  <input id="allowancePosition" type="number" min="0" step="100" value="0" class="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                  <input id="allowancePosition" type="number" min="0" step="100" value="2000" class="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500" />
                 </div>
                 <div>
                   <label for="allowanceDiligence" class="block text-xs text-slate-600 mb-1">เบี้ยขยัน</label>
@@ -416,7 +429,7 @@
               <div class="flex items-center justify-between bg-slate-50 p-3 rounded-xl border border-slate-200">
                 <div>
                   <p class="text-sm font-medium text-slate-900">หักประกันสังคมอัตโนมัติ (5%)</p>
-                  <p class="text-xs text-slate-500">คำนวณตามฐานเงินเดือน สูงสุด ฿750/เดือน</p>
+                  <p class="text-xs text-slate-500">คำนวณตามฐานเงินเดือน รวมเงินเดือน+ค่าตำแหน่ง สูงสุด ฿875/เดือน (ปี 2569)</p>
                 </div>
                 <input id="ssoEnabled" type="checkbox" checked class="w-5 h-5 accent-indigo-600 rounded cursor-pointer" />
               </div>
@@ -424,7 +437,7 @@
               <div class="grid grid-cols-2 gap-2.5">
                 <div>
                   <label for="ssoMax" class="block text-xs text-slate-600 mb-1">เพดานประกันสังคม (บาท)</label>
-                  <input id="ssoMax" type="number" min="0" step="50" value="750" class="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                  <input id="ssoMax" type="number" min="0" step="50" value="875" class="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500" />
                 </div>
                 <div>
                   <label for="pvdPercent" class="block text-xs text-slate-600 mb-1">กองทุนสำรองเลี้ยงชีพ (%)</label>
@@ -436,6 +449,16 @@
                 <label for="otherDeduction" class="block text-xs text-slate-600 mb-1">ภาษีหัก ณ ที่จ่าย / หักอื่นๆ (บาท/เดือน)</label>
                 <input id="otherDeduction" type="number" min="0" step="100" value="0" class="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500" />
               </div>
+            </div>
+
+            <div class="pt-2 border-t border-slate-100 space-y-2.5">
+              <p class="text-xs font-semibold text-slate-700">จัดการตัวเลือกอัตรา OT (เพิ่ม/ลบได้)</p>
+              <div class="flex gap-2">
+                <input id="newRateValue" type="number" min="0.5" max="10" step="0.25" placeholder="ตัวคูณ เช่น 2.5" class="w-28 px-3 py-2 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                <input id="newRateLabel" type="text" placeholder="ชื่อเรียก เช่น OT พิเศษ" class="flex-1 px-3 py-2 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                <button id="btnAddCustomRate" type="button" class="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-xl transition">เพิ่ม</button>
+              </div>
+              <div id="customRatesList" class="flex flex-wrap gap-1.5"></div>
             </div>
           </div>
         </div>
@@ -580,7 +603,7 @@ function doPost(e) {
 }`;
 
     const STORAGE_KEY_RECORDS = 'ot_tracker_records_v1';
-    const STORAGE_KEY_SETTINGS = 'ot_tracker_settings_v2';
+    const STORAGE_KEY_SETTINGS = 'ot_tracker_settings_v3';
     const STORAGE_KEY_DEMO = 'ot_tracker_is_demo_v1';
 
     function getCurrentMonthStr() {
@@ -645,17 +668,34 @@ function doPost(e) {
       records: [],
       settings: {
         profileName: 'บัญชีส่วนตัว',
-        baseSalary: 25000,
+        defaultStartTime: '17:30',
+        baseSalary: 16400,
         workDays: 30,
         workHours: 8,
-        allowancePosition: 0,
+        allowancePosition: 2000,
         allowanceDiligence: 0,
         allowanceOther: 0,
         ssoEnabled: true,
-        ssoMax: 750,
+        ssoMax: 875,
         pvdPercent: 0,
         otherDeduction: 0,
-        gasUrl: ''
+        gasUrl: '',
+        customRates: [
+          { value: '1.5', label: '1.5x — ล่วงเวลาวันทำงานปกติ' },
+          { value: '1', label: '1.0x — ทำงานวันหยุด (รายเดือน)' },
+          { value: '2', label: '2.0x — ทำงานวันหยุด (รายวัน)' },
+          { value: '3', label: '3.0x — ล่วงเวลาในวันหยุด' }
+        ],
+        durationPresets: [
+          { minutes: 30, label: '30 นาที' },
+          { minutes: 60, label: '1 ชม.' },
+          { minutes: 90, label: '1.5 ชม.' },
+          { minutes: 120, label: '2 ชม.' },
+          { minutes: 150, label: '2.5 ชม.' },
+          { minutes: 180, label: '3 ชม.' },
+          { minutes: 210, label: '3.5 ชม.' },
+          { minutes: 240, label: '4 ชม.' }
+        ]
       },
       isDemo: true,
       selectedMonth: getCurrentMonthStr(),
@@ -983,8 +1023,9 @@ function doPost(e) {
       const allowances = (Number(state.settings.allowancePosition) || 0) + (Number(state.settings.allowanceDiligence) || 0) + (Number(state.settings.allowanceOther) || 0);
       const grossIncome = baseSalary + allowances + totalOtPay;
 
-      const ssoMax = Number(state.settings.ssoMax) || 750;
-      const ssoAmount = state.settings.ssoEnabled ? Math.min(ssoMax, Math.round(baseSalary * 0.05)) : 0;
+      const ssoMax = Number(state.settings.ssoMax) || 875;
+      const ssoWageBase = baseSalary + (Number(state.settings.allowancePosition) || 0);
+      const ssoAmount = state.settings.ssoEnabled ? Math.min(ssoMax, Math.round(ssoWageBase * 0.05)) : 0;
       const pvdPercent = Number(state.settings.pvdPercent) || 0;
       const pvdAmount = Number((baseSalary * (pvdPercent / 100)).toFixed(2));
       const otherDeduct = Number(state.settings.otherDeduction) || 0;
@@ -1091,8 +1132,8 @@ function doPost(e) {
     function resetForm() {
       document.getElementById('editRecordId').value = '';
       document.getElementById('otDate').value = getTodayStr();
-      document.getElementById('otStart').value = '18:00';
-      document.getElementById('otEnd').value = '21:00';
+      document.getElementById('otStart').value = state.settings.defaultStartTime || '17:30';
+      document.getElementById('otEnd').value = '20:30';
       document.getElementById('otBreak').value = '0';
       document.getElementById('otNote').value = '';
       document.getElementById('formHeading').innerHTML = `<i data-lucide="clock-4" class="w-5 h-5 text-indigo-600"></i><span>บันทึกเวลาทำโอที</span>`;
@@ -1111,6 +1152,8 @@ function doPost(e) {
 
       // Populate settings inputs
       document.getElementById('profileName').value = state.settings.profileName || 'บัญชีส่วนตัว';
+      document.getElementById('defaultStartTime').value = state.settings.defaultStartTime || '17:30';
+      document.getElementById('otStart').value = state.settings.defaultStartTime || '17:30';
       document.getElementById('baseSalary').value = state.settings.baseSalary;
       document.getElementById('workDays').value = state.settings.workDays;
       document.getElementById('workHours').value = state.settings.workHours;
@@ -1148,16 +1191,138 @@ function doPost(e) {
         showToast('ล้างข้อมูลตัวอย่างเรียบร้อยแล้ว', 'info');
       });
 
-      // Quick Presets
-      document.querySelectorAll('.preset-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
-          const [start, end, brk, mult] = btn.dataset.preset.split(',');
-          document.getElementById('otStart').value = start;
-          document.getElementById('otEnd').value = end;
-          document.getElementById('otBreak').value = brk;
-          document.getElementById('otMultiplier').value = mult;
-          updatePreview();
-        });
+      function renderMultiplierOptions() {
+        const rates = Array.isArray(state.settings.customRates) && state.settings.customRates.length
+          ? state.settings.customRates
+          : [
+              { value: '1.5', label: '1.5x — ล่วงเวลาวันทำงานปกติ' },
+              { value: '1', label: '1.0x — ทำงานวันหยุด (รายเดือน)' },
+              { value: '2', label: '2.0x — ทำงานวันหยุด (รายวัน)' },
+              { value: '3', label: '3.0x — ล่วงเวลาในวันหยุด' }
+            ];
+        const selectEl = document.getElementById('otMultiplier');
+        const currentVal = selectEl.value;
+        selectEl.innerHTML = rates.map(r => `<option value="${escapeHtml(r.value)}">${escapeHtml(r.label)}</option>`).join('');
+        if (rates.some(r => String(r.value) === String(currentVal))) {
+          selectEl.value = currentVal;
+        }
+        const listEl = document.getElementById('customRatesList');
+        listEl.innerHTML = rates.map((r, idx) => `
+          <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs bg-slate-100 text-slate-700 border border-slate-200">
+            <span>${escapeHtml(r.label)}</span>
+            ${rates.length > 1 ? `<button type="button" data-del-rate="${idx}" class="text-slate-400 hover:text-rose-600 font-bold" title="ลบ">&times;</button>` : ''}
+          </span>
+        `).join('');
+      }
+      renderMultiplierOptions();
+
+      function formatMinutesLabel(mins) {
+        if (mins < 60) return `${mins} นาที`;
+        const h = mins / 60;
+        return Number.isInteger(h) ? `${h} ชม.` : `${h} ชม.`;
+      }
+
+      function renderDurationPresets() {
+        const presets = Array.isArray(state.settings.durationPresets) && state.settings.durationPresets.length
+          ? state.settings.durationPresets
+          : [
+              { minutes: 30, label: '30 นาที' },
+              { minutes: 60, label: '1 ชม.' },
+              { minutes: 90, label: '1.5 ชม.' },
+              { minutes: 120, label: '2 ชม.' },
+              { minutes: 150, label: '2.5 ชม.' },
+              { minutes: 180, label: '3 ชม.' },
+              { minutes: 210, label: '3.5 ชม.' },
+              { minutes: 240, label: '4 ชม.' }
+            ];
+        const container = document.getElementById('quickDurationContainer');
+        container.innerHTML = presets.map(p => `
+          <button type="button" data-duration-min="${Number(p.minutes)}" class="duration-preset-btn py-2 px-1.5 text-xs font-semibold bg-slate-100 hover:bg-indigo-50 hover:text-indigo-700 text-slate-700 rounded-xl transition min-h-[38px]">${escapeHtml(p.label)}</button>
+        `).join('');
+
+        const editList = document.getElementById('editPresetsList');
+        editList.innerHTML = presets.map((p, idx) => `
+          <span class="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] bg-white border border-slate-200 text-slate-700">
+            <span>${escapeHtml(p.label)}</span>
+            ${presets.length > 1 ? `<button type="button" data-del-preset="${idx}" class="text-slate-400 hover:text-rose-600 font-bold" title="ลบ">&times;</button>` : ''}
+          </span>
+        `).join('');
+      }
+      renderDurationPresets();
+
+      document.getElementById('quickDurationContainer').addEventListener('click', (e) => {
+        const btn = e.target.closest('button[data-duration-min]');
+        if (!btn) return;
+        const durationMin = Number(btn.dataset.durationMin) || 0;
+        const startVal = document.getElementById('otStart').value || state.settings.defaultStartTime || '17:30';
+        const breakMin = Number(document.getElementById('otBreak').value) || 0;
+        const [sh, sm] = startVal.split(':').map(Number);
+        if (isNaN(sh) || isNaN(sm)) return;
+        const totalEndMin = (sh * 60 + sm + durationMin + breakMin) % (24 * 60);
+        const eh = String(Math.floor(totalEndMin / 60)).padStart(2, '0');
+        const em = String(totalEndMin % 60).padStart(2, '0');
+        document.getElementById('otEnd').value = `${eh}:${em}`;
+        updatePreview();
+      });
+
+      document.getElementById('btnToggleEditPresets').addEventListener('click', () => {
+        document.getElementById('editPresetsBox').classList.toggle('hidden');
+      });
+
+      document.getElementById('btnAddDurationPreset').addEventListener('click', () => {
+        const mins = Number(document.getElementById('newPresetMinutes').value);
+        const lbl = document.getElementById('newPresetLabel').value.trim();
+        if (!mins || mins <= 0) {
+          showToast('กรุณากรอกจำนวนนาทีให้ถูกต้อง', 'warning');
+          return;
+        }
+        state.settings.durationPresets = state.settings.durationPresets || [];
+        state.settings.durationPresets.push({ minutes: mins, label: lbl || formatMinutesLabel(mins) });
+        state.settings.durationPresets.sort((a, b) => a.minutes - b.minutes);
+        document.getElementById('newPresetMinutes').value = '';
+        document.getElementById('newPresetLabel').value = '';
+        saveState();
+        renderDurationPresets();
+        showToast('เพิ่มปุ่มเลือกเวลาด่วนแล้ว', 'success');
+      });
+
+      document.getElementById('editPresetsList').addEventListener('click', (e) => {
+        const btn = e.target.closest('button[data-del-preset]');
+        if (!btn) return;
+        const idx = Number(btn.dataset.delPreset);
+        if (state.settings.durationPresets.length <= 1) return;
+        state.settings.durationPresets.splice(idx, 1);
+        saveState();
+        renderDurationPresets();
+        showToast('ลบปุ่มเลือกเวลาด่วนแล้ว', 'info');
+      });
+
+      document.getElementById('btnAddCustomRate').addEventListener('click', () => {
+        const val = document.getElementById('newRateValue').value.trim();
+        const lbl = document.getElementById('newRateLabel').value.trim();
+        if (!val || isNaN(Number(val)) || Number(val) <= 0) {
+          showToast('กรุณากรอกตัวคูณ OT ที่ถูกต้อง (เช่น 2.5)', 'warning');
+          return;
+        }
+        const label = lbl ? `${val}x — ${lbl}` : `${val}x`;
+        state.settings.customRates = state.settings.customRates || [];
+        state.settings.customRates.push({ value: String(val), label });
+        document.getElementById('newRateValue').value = '';
+        document.getElementById('newRateLabel').value = '';
+        saveState();
+        renderMultiplierOptions();
+        showToast('เพิ่มตัวเลือกอัตรา OT แล้ว', 'success');
+      });
+
+      document.getElementById('customRatesList').addEventListener('click', (e) => {
+        const btn = e.target.closest('button[data-del-rate]');
+        if (!btn) return;
+        const idx = Number(btn.dataset.delRate);
+        if (state.settings.customRates.length <= 1) return;
+        state.settings.customRates.splice(idx, 1);
+        saveState();
+        renderMultiplierOptions();
+        showToast('ลบตัวเลือกอัตรา OT แล้ว', 'info');
       });
 
       // Live OT preview
@@ -1167,7 +1332,7 @@ function doPost(e) {
 
       // Live Salary & Deduction settings
       const settingInputs = [
-        'profileName', 'baseSalary', 'workDays', 'workHours',
+        'profileName', 'defaultStartTime', 'baseSalary', 'workDays', 'workHours',
         'allowancePosition', 'allowanceDiligence', 'allowanceOther',
         'ssoEnabled', 'ssoMax', 'pvdPercent', 'otherDeduction'
       ];
@@ -1175,6 +1340,10 @@ function doPost(e) {
         const el = document.getElementById(id);
         el.addEventListener(el.type === 'checkbox' ? 'change' : 'input', () => {
           state.settings.profileName = document.getElementById('profileName').value.trim() || 'บัญชีส่วนตัว';
+          state.settings.defaultStartTime = document.getElementById('defaultStartTime').value || '17:30';
+          if (!document.getElementById('editRecordId').value) {
+            document.getElementById('otStart').value = state.settings.defaultStartTime;
+          }
           state.settings.baseSalary = Number(document.getElementById('baseSalary').value) || 0;
           state.settings.workDays = Number(document.getElementById('workDays').value) || 30;
           state.settings.workHours = Number(document.getElementById('workHours').value) || 8;
